@@ -5,3 +5,7 @@ torchvision==0.10.0+cu111
 torchaudio==0.9.0
 youtube_dl
 scipy
+youtube-search-python
+psaw
+redvid
+tqdm
