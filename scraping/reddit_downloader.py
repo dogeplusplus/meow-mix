@@ -1,11 +1,13 @@
 import os
 import logging
 import subprocess
+import pandas as pd
 import multiprocessing
 
 from os.path import basename
 from redvid import Downloader
 from psaw import PushshiftAPI
+
 
 def scrape_audio(subreddit, target_dir, limit=100):
     """Scrape videos from a specific subreddit.
@@ -21,8 +23,10 @@ def scrape_audio(subreddit, target_dir, limit=100):
 
     results = api.search_submissions(
         subreddit=subreddit,
-        filter=["url"],
+        filter=["url", "link_flair_text"],
     )
+
+    video_index = pd.DataFrame(columns=["video_id", "flair"])
 
     counter = 0
     for post in results:
@@ -32,9 +36,12 @@ def scrape_audio(subreddit, target_dir, limit=100):
             downloader = Downloader(post.url, target_dir, min_q=True)
             try:
                 downloader.download()
+                video_index.append({"video": post.url, "flair": post.link_flair_text})
                 counter += 1
             except BaseException:
                     logging.error(f"Could not download: {post.url}. Continuing")
+
+    video_index.to_csv(f"{target_dir}/index.csv")
 
 
 def extract_audio(directory, target_dir):
