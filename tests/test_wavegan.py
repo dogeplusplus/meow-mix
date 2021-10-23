@@ -4,6 +4,8 @@ import numpy as np
 
 from networks.wavegan import WaveGan, PhaseShuffle, Generator, Discriminator
 
+torch.manual_seed(0)
+
 
 @pytest.fixture
 def model():
@@ -16,7 +18,7 @@ def test_discriminator_output():
     n = 2
     disc = Discriminator(c, d)
 
-    sound_batch  = np.ones((n, 16384, c))
+    sound_batch  = torch.ones((n, c, 16384))
     predicted = disc(sound_batch)
     assert predicted.shape == (n, 1)
 
@@ -26,19 +28,19 @@ def test_generator_output():
     d = 8
     gen = Generator(c, d)
 
-    latent_vector  = np.ones((2, 100))
+    latent_vector  = torch.ones((2, 100))
     sound_generation = gen(latent_vector)
-    assert sound_generation.shape == (2, 16384, 1)
+    # (N, C, W)
+    assert sound_generation.shape == (2, c, 16384)
 
 
 def test_phase_shuffle():
     phase_shuffle = PhaseShuffle(7)
-    torch.manual_seed(0)
 
     # Check reflecting padding works
     x = torch.arange(10, dtype=torch.float).reshape((1, 1, 10))
     prediction = phase_shuffle(x)
-    expected = torch.FloatTensor([7, 6, 5, 4, 3, 2, 1, 0, 1, 2]).reshape((1, 1, 10))
+    expected = torch.FloatTensor([3, 2, 1, 0, 1, 2, 3, 4, 5, 6]).reshape((1, 1, 10))
 
     assert prediction.shape == expected.shape, "Shape not preserved in phase shuffle"
     assert torch.equal(prediction, expected), "Reflection padding did not work"
@@ -47,5 +49,12 @@ def test_phase_shuffle():
     same_prediction = phase_shuffle(x)
     assert not np.array_equal(prediction, same_prediction), "Phase shuffle not random under this seed"
 
+
+def test_phase_indentity():
+    phase_shuffle = PhaseShuffle(0)
+
+    x = torch.arange(10, dtype=torch.float).reshape((1, 1, 10))
+    prediction = phase_shuffle(x)
+    assert torch.equal(prediction, x), "Phase shuffle identity changed the output"
 
 

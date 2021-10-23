@@ -10,7 +10,7 @@ class PhaseShuffle(nn.Module):
     def forward(self, x):
         shift = torch.randint(-self.n, self.n+1, (1,))
         # Reflection pad to the right
-        if shift < 0:
+        if shift <= 0:
             right_pad = abs(shift)
             x = F.pad(x, (0, right_pad), mode="reflect")[..., right_pad:]
         else:
@@ -24,7 +24,7 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.d = d
 
-        self.kernel_size = 25
+        self.kernel_size = 2
         self.stride = 4
 
         self.base = nn.Sequential(
@@ -53,7 +53,7 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         x = self.base(x)
-        x = x.view(-1, 256*self.d)
+        x = x.reshape(-1, 256*self.d)
         return self.dense(x)
 
 
@@ -61,8 +61,8 @@ class Generator(nn.Module):
     def __init__(self, c, d):
         super(Generator, self).__init__()
         self.d = d
-        self.kernel_size = 25
         self.stride = 4
+        self.kernel_size = 4
 
         self.dense=nn.Linear(100, 256*d)
 
@@ -82,7 +82,7 @@ class Generator(nn.Module):
 
     def forward(self, x):
         x = self.dense(x)
-        x = x.view(-1, 16, 16*self.d)
+        x = x.view(-1, 16*self.d, 16)
         return self.layers(x)
 
 
