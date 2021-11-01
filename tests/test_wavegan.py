@@ -21,6 +21,8 @@ def test_discriminator_output():
     sound_batch  = torch.ones((n, c, 16384))
     predicted = disc(sound_batch)
     assert predicted.shape == (n, 1)
+    assert torch.all(predicted >= 0.)
+    assert torch.all(predicted <= 1.)
 
 
 def test_generator_output():
