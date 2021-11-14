@@ -43,6 +43,11 @@ def gradient_penalty(discriminator, device, real_samples, fake_samples):
         Real samples from the training dataset
     fake_samples : torch.FloatTensor
         Samples produced by the generator
+
+    Returns
+    ----------
+    gradient_penalty: torch.FloatTensor
+        Gradient penalty of the real and fake audio samples
     """
     alpha = torch.randn(real_samples.size(0), 1, 1).to(device)
     interpolates = (alpha * real_samples + ((1 - alpha) * fake_samples)).requires_grad_(True)
@@ -166,6 +171,9 @@ class WaveGan(nn.Module):
         self.generator = Generator(self.model_config.c, self.model_config.d, self.model_config.z)
         self.discriminator = Discriminator(self.model_config.c, self.model_config.d, self.model_config.alpha, self.model_config.n)
 
+        self.generator.to(self.device)
+        self.discriminator.to(self.device)
+
         self.g_optim = optim.Adam(self.generator.parameters())
         self.d_optim = optim.Adam(self.discriminator.parameters())
         self.loss_fn = nn.BCELoss()
@@ -176,23 +184,18 @@ class WaveGan(nn.Module):
             # Load previous session if exists
             generator_path = join(train_config.log_dir, "generator_latest.pt")
             discriminator_path = join(train_config.log_dir, "discriminator_latest.pt")
-            opt_d_path = join(train_config.log_dir, "opt_d.pt")
-            opt_g_path = join(train_config.log_dir, "opt_g.pt")
+            opt_g_path = join(train_config.log_dir, "gen_optim.pt")
+            opt_d_path = join(train_config.log_dir, "disc_optim.pt")
 
             self.generator.load_state_dict(torch.load(generator_path))
             self.discriminator.load_state_dict(torch.load(discriminator_path))
             self.g_optim.load_state_dict(torch.load(opt_g_path))
             self.d_optim.load_state_dict(torch.load(opt_d_path))
 
-        self.to(self.device)
 
     def train(self, train_ds):
         config = self.train_config
         os.makedirs(config.log_dir, exist_ok=True)
-        with open(join(config.log_dir, "train_config.json"), "w") as f:
-            json.dump(asdict(self.train_config), f)
-        with open(join(config.log_dir, "model_config.json"), "w") as f:
-            json.dump(asdict(self.model_config), f)
 
         writer = SummaryWriter(config.log_dir)
 
@@ -203,18 +206,20 @@ class WaveGan(nn.Module):
             total_g_loss = 0
             total_d_loss_real = 0
             total_d_loss_fake = 0
+            total_accuracy = 0
             iters = 0
 
             description = f"Epoch {e}"
             train_bar = tqdm(train_ds, desc=description)
 
             for batch in train_bar:
-                sounds = batch.to(self.device)
-                batch_size = sounds.size(0)
+                real = batch.to(self.device)
+                batch_size = real.size(0)
 
-                d_loss_real, d_loss_fake = self.train_discriminator(sounds)
+                d_loss_real, d_loss_fake, accuracy = self.train_discriminator(real)
                 g_loss = self.train_generator(batch_size)
 
+                total_accuracy += accuracy
                 total_g_loss += g_loss
                 total_d_loss_fake += d_loss_fake
                 total_d_loss_real += d_loss_real
@@ -224,6 +229,7 @@ class WaveGan(nn.Module):
                     "d_loss_real": f"{total_d_loss_real / iters:0.5f}",
                     "d_loss_fake": f"{total_d_loss_fake / iters:0.5f}",
                     "g_loss": f"{total_g_loss / iters:0.5f}",
+                    "accuracy": f"{total_accuracy / iters:0.5f}",
                 }
 
                 train_bar.set_postfix(live_metrics)
@@ -246,8 +252,15 @@ class WaveGan(nn.Module):
 
                 torch.save(self.generator.state_dict(), os.path.join(config.log_dir, f"generator_latest.pt"))
                 torch.save(self.discriminator.state_dict(), os.path.join(config.log_dir, f"discriminator_latest.pt"))
-                torch.save(self.g_optim.state_dict(), os.path.join(config.log_dir, f"g_optim.pt"))
-                torch.save(self.d_optim.state_dict(), os.path.join(config.log_dir, f"d_optim.pt"))
+                torch.save(self.g_optim.state_dict(), os.path.join(config.log_dir, f"gen_optim.pt"))
+                torch.save(self.d_optim.state_dict(), os.path.join(config.log_dir, f"disc_optim.pt"))
+
+        self.train_config.current_epoch += self.train_config.epochs
+
+        with open(join(config.log_dir, "train_config.json"), "w") as f:
+            json.dump(asdict(self.train_config), f, indent=4)
+        with open(join(config.log_dir, "model_config.json"), "w") as f:
+            json.dump(asdict(self.model_config), f, indent=4)
 
 
     def train_generator(self, batch_size):
@@ -289,6 +302,10 @@ class WaveGan(nn.Module):
         loss.backward()
         self.d_optim.step()
 
-        return loss_real.item(), loss_fake.item()
+        combined_prediction = torch.cat([pred_real, pred_fake], dim=0) > 0.5
+        combined_labels = torch.cat([real_labels, fake_labels], dim=0)
+        accuracy = torch.mean(torch.eq(combined_prediction, combined_labels).type(torch.FloatTensor).to(self.device))
+
+        return loss_real.item(), loss_fake.item(), accuracy.item()
 
 
