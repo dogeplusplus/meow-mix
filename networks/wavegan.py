@@ -12,21 +12,48 @@ from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
 class PhaseShuffle(nn.Module):
-    def __init__(self, n):
+    """
+    Performs phase shuffling, i.e. shifting feature axis of a 3D tensor
+    by a random integer in {-n, n} and performing reflection padding where
+    necessary.
+    """
+
+    # Copied from https://github.com/jtcramer/wavegan/blob/master/wavegan.py#L8
+    def __init__(self, shift_factor):
         super(PhaseShuffle, self).__init__()
-        self.n = n
+        self.shift_factor = shift_factor
 
     def forward(self, x):
-        shift = torch.randint(-self.n, self.n+1, (1,))
-        # Reflection pad to the right
-        if shift <= 0:
-            right_pad = abs(shift)
-            x = F.pad(x, (0, right_pad), mode="reflect")[..., right_pad:]
-        else:
-            left_pad = shift
-            x = F.pad(x, (left_pad, 0), mode="reflect")[..., :-left_pad]
+        if self.shift_factor == 0:
+            return x
+        # uniform in (L, R)
+        k_list = (
+            torch.Tensor(x.shape[0]).random_(0, 2 * self.shift_factor + 1)
+            - self.shift_factor
+        )
+        k_list = k_list.numpy().astype(int)
 
-        return x
+        # Combine sample indices into lists so that less shuffle operations
+        # need to be performed
+        k_map = {}
+        for idx, k in enumerate(k_list):
+            k = int(k)
+            if k not in k_map:
+                k_map[k] = []
+            k_map[k].append(idx)
+
+        # Make a copy of x for our output
+        x_shuffle = x.clone()
+
+        # Apply shuffle to each sample
+        for k, idxs in k_map.items():
+            if k > 0:
+                x_shuffle[idxs] = F.pad(x[idxs][..., :-k], (k, 0), mode="reflect")
+            else:
+                x_shuffle[idxs] = F.pad(x[idxs][..., -k:], (0, -k), mode="reflect")
+
+        assert x_shuffle.shape == x.shape, "{}, {}".format(x_shuffle.shape, x.shape)
+        return x_shuffle
 
 
 def gradient_penalty(discriminator, device, real_samples, fake_samples):
@@ -207,6 +234,7 @@ class WaveGan(nn.Module):
             total_d_loss_real = 0
             total_d_loss_fake = 0
             total_accuracy = 0
+            total_gp_loss = 0
             iters = 0
 
             description = f"Epoch {e}"
@@ -216,13 +244,14 @@ class WaveGan(nn.Module):
                 real = batch.to(self.device)
                 batch_size = real.size(0)
 
-                d_loss_real, d_loss_fake, accuracy = self.train_discriminator(real)
+                d_loss_real, d_loss_fake, accuracy, gp_loss = self.train_discriminator(real)
                 g_loss = self.train_generator(batch_size)
 
                 total_accuracy += accuracy
                 total_g_loss += g_loss
                 total_d_loss_fake += d_loss_fake
                 total_d_loss_real += d_loss_real
+                total_gp_loss += gp_loss
                 iters += batch_size
 
                 live_metrics = {
@@ -245,6 +274,7 @@ class WaveGan(nn.Module):
             writer.add_scalar("discriminator_loss_real", total_d_loss_real / iters, e)
             writer.add_scalar("discriminator_loss_fake", total_d_loss_fake / iters, e)
             writer.add_scalar("generator_loss", total_g_loss / iters, e)
+            writer.add_scalar("gradient_penalty", total_gp_loss / iters, e)
 
             if e % config.save_every == 0:
                 torch.save(self.generator.state_dict(), os.path.join(config.log_dir, f"generator_{e}.pt"))
@@ -305,7 +335,6 @@ class WaveGan(nn.Module):
         combined_prediction = torch.cat([pred_real, pred_fake], dim=0) > 0.5
         combined_labels = torch.cat([real_labels, fake_labels], dim=0)
         accuracy = torch.mean(torch.eq(combined_prediction, combined_labels).type(torch.FloatTensor).to(self.device))
-
-        return loss_real.item(), loss_fake.item(), accuracy.item()
+        return loss_real.item(), loss_fake.item(), accuracy.item(), gp_loss.item()
 
 
