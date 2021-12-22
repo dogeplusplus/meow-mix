@@ -9,7 +9,8 @@ from dataclasses import dataclass, asdict
 from os.path import join
 from tqdm import tqdm
 from datetime import datetime
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.writer import SummaryWriter
+
 
 class PhaseShuffle(nn.Module):
     """

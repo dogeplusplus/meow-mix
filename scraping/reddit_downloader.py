@@ -1,4 +1,5 @@
 import os
+import glob
 import logging
 import subprocess
 import pandas as pd
@@ -7,9 +8,12 @@ import multiprocessing
 from os.path import basename
 from redvid import Downloader
 from psaw import PushshiftAPI
+from prefect import Flow, task, Parameter, mapped
+from prefect.executors import LocalDaskExecutor
 
 
-def scrape_audio(subreddit, target_dir, limit=100):
+@task
+def extract_video(subreddit, target_dir, limit):
     """Scrape videos from a specific subreddit.
 
     Args:
@@ -23,62 +27,70 @@ def scrape_audio(subreddit, target_dir, limit=100):
 
     results = api.search_submissions(
         subreddit=subreddit,
-        filter=["url", "link_flair_text"],
+        filter=["url"],
+        sort_type="score",
+        sort="desc"
     )
-
-    video_index = pd.DataFrame(columns=["video_id", "flair"])
 
     counter = 0
     for post in results:
         if counter >= limit:
             break
-        if post.url.startswith(video_prefix):
-            downloader = Downloader(post.url, target_dir, min_q=True)
+        url = post.url
+        if url.startswith(video_prefix):
             try:
+                downloader = Downloader(url, target_dir, min_q=True)
                 downloader.download()
-                video_index.append({"video": post.url, "flair": post.link_flair_text})
                 counter += 1
             except BaseException:
-                    logging.error(f"Could not download: {post.url}. Continuing")
+                logging.error(f"Could not download video: {url}")
 
-    video_index.to_csv(f"{target_dir}/index.csv")
+    return glob.glob(f"{target_dir}/*.mp4")
 
 
-def extract_audio(directory, target_dir):
+@task
+def convert_to_audio(video_path):
     """Change mp4 video files to audio.
 
     Args:
-        directory (str): path to folder containing mp4 files.
-        target_dir (str): path to store converted audio files.
+        video_path (str): list of video paths
     """
-    os.makedirs(target_dir, exist_ok=True)
-    threads = multiprocessing.cpu_count()
-    pool = multiprocessing.Pool(processes=threads)
-    work_list = [
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            f"{directory}/{basename(file)}",
-            "-ac",
-            "2",
-            "-f",
-            "wav",
-            f"{target_dir}/{basename(file).replace('.mp4', '.wav')}"
-        ]
-        for file in os.listdir(directory)
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        video_path,
+        "-ac",
+        "2",
+        "-f",
+        "wav",
+        video_path.replace(".mp4", ".wav")
     ]
-    pool.map(subprocess.run, work_list)
+
+    subprocess.run(command)
+    os.remove(video_path)
+
+
+def build_flow():
+    with Flow("reddit-scraper") as flow:
+        subreddit = Parameter("subreddit", default="catswhoyell")
+        output_dir = Parameter("output_directory")
+        limit = Parameter("limit", default=500)
+
+        index = extract_video(subreddit, output_dir, limit)
+        convert_to_audio(mapped(index))
+
+    return flow
 
 
 def main():
-    data_dir = "data/reddit"
-    video_dir = f"{data_dir}/videos"
-    audio_dir = f"{data_dir}/audio"
-
-    subreddit = "catswhoyell"
-    scrape_audio(subreddit, video_dir)
-    extract_audio(video_dir, audio_dir)
+    flow = build_flow()
+    flow.executor = LocalDaskExecutor(scheduler="processes")
+    parameters = dict(
+        output_directory="data/reddit",
+        limit=500,
+    )
+    flow.run(parameters=parameters)
 
 
 if __name__ == "__main__":
