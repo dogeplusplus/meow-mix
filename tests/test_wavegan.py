@@ -42,7 +42,7 @@ def test_phase_shuffle():
     # Check reflecting padding works
     x = torch.arange(10, dtype=torch.float).reshape((1, 1, 10))
     prediction = phase_shuffle(x)
-    expected = torch.FloatTensor([3, 2, 1, 0, 1, 2, 3, 4, 5, 6]).reshape((1, 1, 10))
+    expected = torch.FloatTensor([2, 3, 4, 5, 6, 7, 8, 9, 8, 7]).reshape((1, 1, 10))
 
     assert prediction.shape == expected.shape, "Shape not preserved in phase shuffle"
     assert torch.equal(prediction, expected), "Reflection padding did not work"

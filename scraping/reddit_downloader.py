@@ -1,11 +1,10 @@
 import os
 import glob
 import logging
+import datetime
 import subprocess
-import pandas as pd
-import multiprocessing
 
-from os.path import basename
+
 from redvid import Downloader
 from psaw import PushshiftAPI
 from prefect import Flow, task, Parameter, mapped
@@ -25,7 +24,10 @@ def extract_video(subreddit, target_dir, limit):
     api = PushshiftAPI()
     video_prefix = "https://v.redd.it"
 
+    start_epoch = int(datetime.datetime.now().timestamp())
+
     results = api.search_submissions(
+        after=start_epoch,
         subreddit=subreddit,
         filter=["url"],
         sort_type="score",
