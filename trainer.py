@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader
 
 from networks.wavegan import WaveGan, TrainingConfig, ModelConfig
-from extract.dataset import MeowDataset
+from load.dataset import MeowDataset
 
 def main():
     batch_size = 64

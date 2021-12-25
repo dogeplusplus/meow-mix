@@ -3,7 +3,6 @@ import torchaudio
 from torch.utils.data import Dataset
 
 
-
 class MeowDataset(Dataset):
     def __init__(self, audio_directory):
         self.audio_directory = audio_directory
