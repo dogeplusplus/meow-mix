@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 
 from tqdm import tqdm
 from pydub import AudioSegment
@@ -55,3 +56,20 @@ def peak_second(sound):
 
     return sound[peak_location-offset:peak_location+offset]
 
+
+def rename_audio_paths(labels_path):
+    """
+    Convert audio paths in label-studio output to use the native local path.
+
+    Remove label-studio prefix directory and prepend the local path on disk.
+
+    Parameters
+    ----------
+    labels_path: str
+        Path to the labels
+    """
+    df = pd.read_csv(labels_path)
+    dataset_directory = os.path.dirname(labels_path)
+    convert = lambda x: os.path.join(dataset_directory, x[24:])
+    df["audio"] = df["audio"].apply(convert)
+    df.to_csv(labels_path, index=False)
