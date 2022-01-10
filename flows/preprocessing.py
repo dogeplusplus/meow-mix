@@ -123,7 +123,6 @@ def build_flow():
 
 
 def main():
-    # TODO: Either add argunment passing or a better way of organising/running flows
     flow = build_flow()
     flow.executor = LocalDaskExecutor(scheduler="processes")
     flow.run()

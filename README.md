@@ -1,3 +1,3 @@
-# python-template
+# meow-mix
 
 TODO
