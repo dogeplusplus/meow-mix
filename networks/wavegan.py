@@ -167,7 +167,7 @@ class Generator(nn.Module):
         return self.layers(x)
 
 @dataclass
-class ModelConfig:
+class GanConfig:
     n: int = 2
     d: int = 1
     c: int = 1
@@ -178,8 +178,8 @@ class ModelConfig:
 
 
 @dataclass
-class TrainingConfig:
-    model_config: ModelConfig
+class GanTrainConfig:
+    model_config: GanConfig
     epochs: int = 100
     learning_rate: float = 1e-3
     lambda_gp: float = 10
@@ -189,7 +189,7 @@ class TrainingConfig:
 
 
 class WaveGan(nn.Module):
-    def __init__(self, train_config: TrainingConfig):
+    def __init__(self, train_config: GanTrainConfig):
         super(WaveGan, self).__init__()
         self.train_config = train_config
         self.model_config = train_config.model_config
