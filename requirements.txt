@@ -10,3 +10,4 @@ psaw
 tqdm
 prefect
 label-studio
+more-itertools
