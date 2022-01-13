@@ -1,19 +1,19 @@
-
 from pathlib import Path
-from torch.utils.data import DataLoader
 
-from load.dataset import MeowDataset, collate_fn
+from load.dataset import build_datasets, DataConfig
 from networks.yellnet import YellNet, SegmentConfig, SegmentTrainConfig
 
-ds = MeowDataset(Path("data", "preprocessed", "catswhoyell"))
-loader = DataLoader(ds, collate_fn=collate_fn, batch_size=16)
-model_config = SegmentConfig()
-train_config = SegmentTrainConfig(100,1e-4)
 
-model = YellNet(model_config)
-# model.train(loader, train_config)
+def main():
+    dataset_path = Path("data", "preprocessed", "catswhoyell")
+    data_config = DataConfig(dataset_path, 16, 0.2)
+    train_loader, val_loader = build_datasets(data_config)
 
-import torch
-for x, y in loader:
-    pred = model(torch.FloatTensor(x))
-    import pdb; pdb.set_trace()
+    model_config = SegmentConfig()
+    train_config = SegmentTrainConfig(100,1e-4,5)
+
+    model = YellNet(model_config)
+    model.train(train_config, train_loader, val_loader)
+
+if __name__ == "__main__":
+    main()

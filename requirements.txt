@@ -8,6 +8,7 @@ youtube_dl
 scipy
 psaw
 tqdm
+mlflow
 prefect
 label-studio
 more-itertools
