@@ -120,7 +120,9 @@ class YellNet(nn.Module):
         pred = self(x)
         loss = self.loss_fn(torch.squeeze(pred), y)
         classification = pred > 0.5
-        accuracy = (classification == y).sum() / len(y)
+        intersection = (classification == y).sum()
+        union = torch.logical_or(classification, y).sum()
+        jaccard = (intersection / (union + 1e-9)).cpu().detach().type("torch.FloatTensor").mean()
 
         loss.backward()
         if (idx + 1) % self.accumulation_steps == 0:
@@ -128,8 +130,8 @@ class YellNet(nn.Module):
             self.optimiser.zero_grad()
 
         return {
-            f"loss": loss.cpu().detach().numpy(),
-            f"accuracy": accuracy.cpu().detach().numpy(),
+            "loss": loss.cpu().detach().numpy(),
+            "accuracy": jaccard.cpu().detach().numpy(),
         }
 
     def val_step(self, sample):
@@ -139,12 +141,14 @@ class YellNet(nn.Module):
         with torch.no_grad():
             pred = self(x)
             loss = self.loss_fn(torch.squeeze(pred), y)
-            classes = torch.argmax(pred, dim=-1)
-            accuracy = (classes == y).sum() / len(y)
+            classification = pred > 0.5
+            intersection = (classification == y).sum()
+            union = torch.logical_or(classification, y).sum()
+            jaccard = (intersection / (union + 1e-9)).cpu().detach().type("torch.FloatTensor").mean()
 
         return {
-            f"loss": loss.cpu().detach().numpy(),
-            f"accuracy": accuracy.cpu().detach().numpy(),
+            "loss": loss.cpu().detach().numpy(),
+            "accuracy": jaccard.cpu().detach().numpy(),
         }
 
     def display_metrics(self, metrics_dict, progress_bar):
