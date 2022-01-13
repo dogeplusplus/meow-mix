@@ -22,3 +22,7 @@ dvc:
 .PHONY: prefect
 prefect:
 	prefect server start --use-volume
+
+.PHONY: mlflow 
+mlflow:
+	mlflow ui

@@ -111,7 +111,7 @@ class YellNet(nn.Module):
             if (e + 1) % config.save_every == 0:
                 mlflow.pytorch.log_model(self, "model")
 
-        return self.model
+        mlflow.pytorch.log_model(self, "model")
 
     def train_step(self, idx, sample):
         x, y = sample
