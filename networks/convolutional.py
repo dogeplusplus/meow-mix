@@ -72,8 +72,8 @@ class ConvSegment(nn.Module):
         self.optimiser.zero_grad()
         for e in range(config.epochs):
             train_losses = {
-                f"loss": 0,
-                f"accuracy": 0,
+                "loss": 0,
+                "accuracy": 0,
             }
             val_losses = deepcopy(train_losses)
 
