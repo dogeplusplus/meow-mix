@@ -25,8 +25,6 @@ def collate_fn(batch: List[Tuple[np.ndarray, np.ndarray]]) -> Tuple[torch.FloatT
     """
     audio, labels = zip(*batch)
 
-    #TODO: Doing Cat vs Not Cat for now. Consider training a (Background, Cat, Human) model
-    labels = labels != 1
 
     max_size = max([l.size for l in labels])
     repeat_fn = lambda x: int(np.ceil(max_size / x.size))
@@ -35,8 +33,12 @@ def collate_fn(batch: List[Tuple[np.ndarray, np.ndarray]]) -> Tuple[torch.FloatT
     reshaped_audio = [np.tile(a, (1, r))[:, :max_size] for a, r in zip(audio, repetitions)]
     reshaped_labels = [np.tile(l, r)[:max_size] for l, r in zip(labels, repetitions)]
 
+    #TODO: Doing Cat vs Not Cat for now. Consider training a (Background, Cat, Human) model
+    reshaped_labels = np.array(reshaped_labels) == 1
+
     audio_batch = torch.FloatTensor(reshaped_audio)
     label_batch = torch.FloatTensor(reshaped_labels)
+
 
     return audio_batch, label_batch
 
