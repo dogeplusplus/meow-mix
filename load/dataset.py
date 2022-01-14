@@ -25,6 +25,9 @@ def collate_fn(batch: List[Tuple[np.ndarray, np.ndarray]]) -> Tuple[torch.FloatT
     """
     audio, labels = zip(*batch)
 
+    #TODO: Doing Cat vs Not Cat for now. Consider training a (Background, Cat, Human) model
+    labels = labels != 1
+
     max_size = max([l.size for l in labels])
     repeat_fn = lambda x: int(np.ceil(max_size / x.size))
     repetitions = np.vectorize(repeat_fn, otypes=["object"])(labels).astype(int)
