@@ -88,11 +88,7 @@ def build_flow():
 def main():
     flow = build_flow()
     flow.executor = LocalDaskExecutor(scheduler="processes")
-    parameters = dict(
-        output_directory="data/reddit",
-        limit=500,
-    )
-    flow.run(parameters=parameters)
+    flow.register(project_name="meow-mix")
 
 
 if __name__ == "__main__":

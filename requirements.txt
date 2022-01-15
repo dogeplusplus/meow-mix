@@ -12,3 +12,4 @@ mlflow
 prefect
 label-studio
 more-itertools
+librosa
