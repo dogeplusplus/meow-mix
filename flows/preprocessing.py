@@ -146,8 +146,11 @@ def time_resolution_slicing(mfccs, labels, time_resolution):
         mfcc_pad = np.pad(mfcc, ((0, 0), (0, pad_size)), mode="wrap")
         label_pad = np.pad(label, (0, pad_size), mode="wrap")
 
-        mfcc_slices.extend(mfcc_pad)
-        label_slices.extend(label_pad)
+        mfcc_chunks = np.hsplit(mfcc_pad, chunks)
+        label_chunks = np.split(label_pad, chunks)
+
+        mfcc_slices.extend(mfcc_chunks)
+        label_slices.extend(label_chunks)
 
     return mfcc_slices, label_slices
 
@@ -192,10 +195,10 @@ def build_flow():
         label_path = Parameter("label_path")
         dest_dir = Parameter("dest_dir")
         n_mfcc = Parameter("n_mfcc")
-        time_res = Parameter("time_resolution")
+        time_frames = Parameter("time_frames")
 
         mfccs, labels = label_audio_extraction(audio_path, label_path, n_mfcc)
-        mfcc_slices, label_slices = time_resolution_slicing(mfccs, labels, time_res)
+        mfcc_slices, label_slices = time_resolution_slicing(mfccs, labels, time_frames)
         save_dataset(mfcc_slices, label_slices, dest_dir)
 
     return flow
