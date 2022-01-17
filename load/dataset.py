@@ -46,7 +46,7 @@ def collate_fn(batch: List[Tuple[np.ndarray, np.ndarray]]) -> Tuple[torch.FloatT
 class MeowDataset(Dataset):
     def __init__(self, data_dir):
         audio_dir = data_dir.joinpath("audio")
-        label_dir = data_dir.joinpath("labels")
+        label_dir = data_dir.joinpath("label")
 
         self.audio_paths = list(audio_dir.glob("**/*.npy"))
         self.label_paths = list(label_dir.glob("**/*.npy"))
@@ -96,7 +96,7 @@ def build_datasets(config: DataConfig) -> Tuple[DataLoader, DataLoader]:
     train_size = len(ds) - val_size
     train_ds, val_ds = random_split(ds, [train_size, val_size])
 
-    train_loader = DataLoader(train_ds, collate_fn=collate_fn, batch_size=config.batch_size)
-    val_loader = DataLoader(val_ds, collate_fn=collate_fn, batch_size=config.batch_size)
+    train_loader = DataLoader(train_ds, batch_size=config.batch_size)
+    val_loader = DataLoader(val_ds, batch_size=config.batch_size)
 
     return train_loader, val_loader
