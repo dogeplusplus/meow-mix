@@ -12,19 +12,19 @@ from prefect.executors import LocalDaskExecutor
 
 
 @task
-def extract_video(subreddit, target_dir, limit):
+def extract_video(subreddit, target_dir, limit, after):
     """Scrape videos from a specific subreddit.
 
     Args:
         subreddit (str): subreddit to search
         target_dir (str): folder to store outputs
         limit (int): maximum number of videos to try
+        after (float): time to filter posts after
     """
     os.makedirs(target_dir, exist_ok=True)
     api = PushshiftAPI()
     video_prefix = "https://v.redd.it"
-
-    start_epoch = int(datetime.datetime.now().timestamp())
+    start_epoch = int(after)
 
     results = api.search_submissions(
         after=start_epoch,
@@ -77,9 +77,10 @@ def build_flow():
     with Flow("reddit-scraper") as flow:
         subreddit = Parameter("subreddit", default="catswhoyell")
         output_dir = Parameter("output_directory")
-        limit = Parameter("limit", default=500)
+        limit = Parameter("limit", default=2000)
+        after = Parameter("after")
 
-        index = extract_video(subreddit, output_dir, limit)
+        index = extract_video(subreddit, output_dir, limit, after)
         convert_to_audio(mapped(index))
 
     return flow
