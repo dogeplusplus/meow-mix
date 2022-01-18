@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import torch.nn.functional as F
 
 from pathlib import Path
 from typing import Tuple, List
@@ -33,11 +34,9 @@ def collate_fn(batch: List[Tuple[np.ndarray, np.ndarray]]) -> Tuple[torch.FloatT
     reshaped_audio = [np.tile(a, (1, r))[:, :max_size] for a, r in zip(audio, repetitions)]
     reshaped_labels = [np.tile(l, r)[:max_size] for l, r in zip(labels, repetitions)]
 
-    #TODO: Doing Cat vs Not Cat for now. Consider training a (Background, Cat, Human) model
-    reshaped_labels = np.array(reshaped_labels) == 1
-
     audio_batch = torch.FloatTensor(reshaped_audio)
     label_batch = torch.FloatTensor(reshaped_labels)
+    label_batch = F.one_hot(label_batch, num_classes=2)
 
 
     return audio_batch, label_batch
@@ -54,8 +53,10 @@ class MeowDataset(Dataset):
     def __getitem__(self, idx):
         wav_path = self.audio_paths[idx]
         label_path = self.label_paths[idx]
-        audio = np.load(wav_path)
-        label = np.load(label_path)
+        audio = torch.from_numpy(np.load(wav_path))
+        label = torch.from_numpy(np.load(label_path).astype(int))
+        label = F.one_hot(label, num_classes=3)
+
         return audio, label
 
     def __len__(self):

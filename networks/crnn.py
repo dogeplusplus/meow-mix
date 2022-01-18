@@ -13,28 +13,35 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class SegmentTrainConfig:
+class CRNNTrainConfig:
     epochs: int
     learning_rate: float
     save_every: int
 
 
 @dataclass
-class SegmentConfig:
-    filters: List = field(default_factory=lambda: [32, 64, 32, 16])
-    kernel_size: Tuple[int, int] = (3, 5)
-    stride: Tuple[int, int] = (2, 1)
-    padding: Tuple[int, int] = (0, 2)
+class CRNNConfig:
+    filters: List = field(default_factory=lambda: [128, 128, 128])
+    rnn_hidden_size: int = 32
+    kernel_size: Tuple[int, int] = (3, 3)
+    stride: Tuple[int, int] = (1, 1)
+    padding: Tuple[int, int] = (1, 1)
+    pooling: List = field(default_factory=lambda: [(5, 1), (2, 1), (2, 1)])
+    sequence_length: int = 160
 
 
-class YellNet(nn.Module):
-    def __init__(self, model_config: SegmentConfig):
+class CRNN(nn.Module):
+    NUM_CLASSES = 3
+
+    def __init__(self, model_config: CRNNConfig):
         super().__init__()
 
-        self.network = nn.Sequential()
+        self.convolutional = nn.Sequential()
         self._filters = [1] + model_config.filters
+        self._rnn_hidden_size = model_config.rnn_hidden_size
+        self._sequence_length = model_config.sequence_length
         for idx, (in_filter, out_filter) in enumerate(pairwise(self._filters)):
-            self.network.add_module(f"conv_{idx}",
+            self.convolutional.add_module(f"conv_{idx}",
                 nn.Conv2d(
                     in_filter,
                     out_filter,
@@ -43,28 +50,50 @@ class YellNet(nn.Module):
                     model_config.padding
                 )
             )
-            self.network.add_module(f"relu_{idx}", nn.LeakyReLU(0.1))
-            self.network.add_module(f"dropout_{idx}", nn.Dropout(0.3))
+            self.convolutional.add_module(f"relu_{idx}", nn.LeakyReLU(0.01))
+            self.convolutional.add_module(f"max_pool_{idx}",
+                nn.MaxPool2d(model_config.pooling[idx])
+            )
 
-
-        self.last_conv = nn.Conv2d(self._filters[-1], 1, kernel_size=1, stride=1)
-        self.sigmoid = nn.Sigmoid()
-        self.loss_fn = nn.BCELoss()
+        self.rnn1 = nn.GRU(
+            2 * self._filters[-1],
+            self._rnn_hidden_size,
+            batch_first=True,
+            bidirectional=True,
+        )
+        self.rnn2 = nn.GRU(
+            2 * self._rnn_hidden_size,
+            self._rnn_hidden_size,
+            batch_first=True,
+            bidirectional=True,
+        )
+        self.time_distributed_dense = nn.Conv2d(1, self.NUM_CLASSES, (64, 1))
+        self.softmax = nn.Softmax(dim=1)
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.accumulation_steps = 16
+        self.loss_fn = nn.MSELoss()
         self.to(self.device)
 
     def forward(self, x):
+        batch_size = x.shape[0]
+
         x = x.unsqueeze(1)
-        x = self.network(x)
-        x = self.last_conv(x)
-        x = self.sigmoid(x)
+        x = self.convolutional(x)
+        x = x.view(batch_size, -1, 2 * self._filters[-1])
+        x, h = self.rnn1(x)
+        x, _ = self.rnn2(x, h)
+        x = x.permute(0, 2, 1)
+        x = x.unsqueeze(1)
+        x = self.time_distributed_dense(x)
+        x = self.softmax(x)
+        x = torch.squeeze(x)
+        x = x.view(batch_size, -1, self.NUM_CLASSES)
 
         return x
 
 
-    def train(self, config: SegmentTrainConfig, train_dataset: DataLoader, val_dataset: DataLoader = None):
+    def train(self, config: CRNNTrainConfig, train_dataset: DataLoader, val_dataset: DataLoader = None):
         desc = "Train Epoch: {}"
         val_desc = "Valid Epoch: {}"
 
@@ -72,8 +101,8 @@ class YellNet(nn.Module):
         self.optimiser.zero_grad()
         for e in range(config.epochs):
             train_losses = {
-                f"loss": 0,
-                f"accuracy": 0,
+                "loss": 0,
+                "accuracy": 0,
             }
             val_losses = deepcopy(train_losses)
 
@@ -81,7 +110,7 @@ class YellNet(nn.Module):
                 train_dataset,
                 desc=desc.format(e+1),
                 total=len(train_dataset),
-                bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}',
+                bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}",
             )
             for i, batch in enumerate(train_bar):
                 losses = self.train_step(i, batch)
@@ -97,7 +126,7 @@ class YellNet(nn.Module):
                     val_dataset,
                     desc=val_desc.format(e+1),
                     total=len(val_dataset),
-                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}',
+                    bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}",
                 )
                 for i, batch in enumerate(val_bar):
                     losses = self.val_step(batch)
@@ -118,12 +147,11 @@ class YellNet(nn.Module):
         x, y = x.to(self.device), y.to(self.device)
 
         pred = self(x)
-        loss = self.loss_fn(torch.squeeze(pred), y)
-        classification = pred > 0.5
-        intersection = (classification == y).sum()
-        union = torch.logical_or(classification, y).sum()
-        jaccard = (intersection / (union + 1e-9)).cpu().detach().type("torch.FloatTensor").mean()
+        loss = self.loss_fn(pred, y.float())
+        classification = torch.argmax(pred, dim=-1)
+        ground_truth = torch.argmax(y, dim=-1)
 
+        accuracy = (classification == ground_truth).sum() / torch.numel(ground_truth)
         loss.backward()
         if (idx + 1) % self.accumulation_steps == 0:
             self.optimiser.step()
@@ -131,7 +159,7 @@ class YellNet(nn.Module):
 
         return {
             "loss": loss.cpu().detach().numpy(),
-            "accuracy": jaccard.cpu().detach().numpy(),
+            "accuracy": accuracy.cpu().detach().numpy(),
         }
 
     def val_step(self, sample):
@@ -140,20 +168,19 @@ class YellNet(nn.Module):
 
         with torch.no_grad():
             pred = self(x)
-            loss = self.loss_fn(torch.squeeze(pred), y)
-            classification = pred > 0.5
-            intersection = (classification == y).sum()
-            union = torch.logical_or(classification, y).sum()
-            jaccard = (intersection / (union + 1e-9)).cpu().detach().type("torch.FloatTensor").mean()
+            loss = self.loss_fn(pred, y)
+            classification = torch.argmax(pred, dim=-1)
+            ground_truth = torch.argmax(y, dim=-1)
+            accuracy = (classification == ground_truth).sum() / torch.numel(ground_truth)
 
         return {
             "loss": loss.cpu().detach().numpy(),
-            "accuracy": jaccard.cpu().detach().numpy(),
+            "accuracy": accuracy.cpu().detach().numpy(),
         }
 
-    def display_metrics(self, metrics_dict, progress_bar):
+    def display_metrics(self, metrics, progress_bar):
         evaluated_metrics = {
-            k: str(v)[:7]
-            for k, v in metrics_dict.items()
+                k: f"{v:.5f}"
+            for k, v in metrics.items()
         }
         progress_bar.set_postfix(**evaluated_metrics)
